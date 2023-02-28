@@ -1,0 +1,289 @@
+<modification>
+	<id>Customer Group Payment/Shipping Methods</id>
+	<version>1.5.1.3</version>
+	<vqmver>1.0.0</vqmver>
+	<author>Sirius76</author>
+
+        <file name="catalog/controller/checkout/cart.php">
+            <operation>
+                <search position="after"><![CDATA[$results = $this->model_setting_extension->getExtensions('shipping');]]></search>
+                <add><![CDATA[				if ($this->customer->isLogged()) {
+					$customer_group_id = $this->customer->getCustomerGroupId();
+				} else {
+					$customer_group_id = $this->config->get('config_customer_group_id');
+				}
+
+				$shipping_methods = $this->model_setting_extension->getCustomerGroupShippingMethods($customer_group_id);
+				]]></add>
+            </operation>
+            <operation>
+                <search position="before"><![CDATA[$this->load->model('shipping/' . $result['code']);]]></search>
+                <add><![CDATA[
+                        if (!in_array($result['extension_id'], $shipping_methods)) {
+                            continue;
+                        }
+                        ]]></add>
+            </operation>
+        </file>
+
+	<file name="catalog/controller/checkout/payment_method.php">
+		<operation>
+			<search position="after"><![CDATA[$results = $this->model_setting_extension->getExtensions('payment');]]></search>
+			<add><![CDATA[				$customer_group_id = $this->customer->getCustomerGroupId();
+				if (!$customer_group_id) {
+									$customer_group_id = $this->config->get('config_customer_group_id');
+				}
+
+				$payment_methods = $this->model_setting_extension->getCustomerGroupPaymentMethods($customer_group_id);]]></add>
+		</operation>
+		<operation>
+			<search position="before"><![CDATA[$this->load->model('payment/' . $result['code']);]]></search>
+			<add><![CDATA[						if (!in_array($result['extension_id'], $payment_methods)) {
+							continue;
+						}
+						]]></add>
+		</operation>
+	</file>
+
+	<file name="catalog/controller/onecheckout/payment.php" error="skip">
+		<operation>
+			<search position="before"><![CDATA[$this->load->model('onecheckout/checkout');]]></search>
+			<add><![CDATA[$this->load->model('setting/extension');]]></add>
+		</operation>
+		<operation>
+			<search position="after"><![CDATA[$results = $this->model_onecheckout_checkout->getExtensions('payment');]]></search>
+			<add><![CDATA[				$customer_group_id = $this->customer->getCustomerGroupId();
+				if (!$customer_group_id) {
+									$customer_group_id = $this->config->get('config_customer_group_id');
+				}
+
+				$payment_methods = $this->model_setting_extension->getCustomerGroupPaymentMethods($customer_group_id);]]></add>
+		</operation>
+		<operation>
+			<search position="before"><![CDATA[$this->load->model('payment/' . $result['code']);]]></search>
+			<add><![CDATA[						if (!in_array($result['extension_id'], $payment_methods)) {
+							continue;
+						}
+						]]></add>
+		</operation>
+	</file>
+
+	<file name="catalog/controller/checkout/shipping_method.php">
+		<operation>
+			<search position="after"><![CDATA[$results = $this->model_setting_extension->getExtensions('shipping');]]></search>
+			<add><![CDATA[
+					$customer_group_id = $this->customer->getCustomerGroupId();
+										if (!$customer_group_id) {
+					$customer_group_id = $this->config->get('config_customer_group_id');
+										}
+					$shipping_methods = $this->model_setting_extension->getCustomerGroupShippingMethods($customer_group_id);
+]]></add>
+		</operation>
+		<operation>
+			<search position="before"><![CDATA[$this->load->model('shipping/' . $result['code']);]]></search>]
+			<add><![CDATA[                    		if (!in_array($result['extension_id'], $shipping_methods)) {
+								continue;
+                            }
+	]]></add>
+		</operation>
+	</file>
+
+	<file name="catalog/controller/onecheckout/shipping.php" error="skip">
+		<operation>
+			<search position="before"><![CDATA[$this->load->model('onecheckout/checkout');]]></search>
+			<add><![CDATA[$this->load->model('setting/extension');]]></add>
+		</operation>
+		<operation>
+			<search position="after"><![CDATA[$results = $this->model_onecheckout_checkout->getExtensions('shipping');]]></search>
+			<add><![CDATA[
+					$customer_group_id = $this->customer->getCustomerGroupId();
+										if (!$customer_group_id) {
+					$customer_group_id = $this->config->get('config_customer_group_id');
+										}
+					$shipping_methods = $this->model_setting_extension->getCustomerGroupShippingMethods($customer_group_id);
+]]></add>
+		</operation>
+		<operation>
+			<search position="before"><![CDATA[$this->load->model('shipping/' . $result['code']);]]></search>]
+			<add><![CDATA[                    		if (!in_array($result['extension_id'], $shipping_methods)) {
+								continue;
+                            }
+	]]></add>
+		</operation>
+	</file>
+
+	<file name="catalog/model/setting/extension.php">
+		<operation>
+			<search position="bottom" offset="2"></search>
+			<add><![CDATA[
+	function getCustomerGroupPaymentMethods($customer_group_id) {
+    	$query = $this->db->query("SELECT payment_methods FROM " . DB_PREFIX . "customer_group WHERE customer_group_id = '" . (int) $customer_group_id . "'");
+		$payment_methods = unserialize($query->row['payment_methods']);
+		if (is_array($payment_methods)) {
+			return $payment_methods;
+		} else {
+			return array();
+		}
+	}
+
+	function getCustomerGroupShippingMethods($customer_group_id) {
+        $query = $this->db->query("SELECT shipping_methods FROM " . DB_PREFIX . "customer_group WHERE customer_group_id = '" . (int) $customer_group_id . "'");
+		$shipping_methods =  unserialize($query->row['shipping_methods']);
+		if (is_array($shipping_methods)) {
+			return $shipping_methods;
+		} else {
+			return array();
+		}
+	}]]></add>
+		</operation>
+	</file>
+
+	<file name="admin/controller/sale/customer_group.php">
+		<operation>
+			<search position="after"><![CDATA[$this->data['entry_name'] = $this->language->get('entry_name');]]></search>
+			<add><![CDATA[        $this->data['entry_payment_methods'] = $this->language->get('entry_payment_methods');
+		$this->data['entry_shipping_methods'] = $this->language->get('entry_shipping_methods');
+                $this->data['text_select_all'] = $this->language->get('text_select_all');
+		$this->data['text_unselect_all'] = $this->language->get('text_unselect_all');]]></add>
+		</operation>
+		<operation>
+			<search position="before"><![CDATA[$this->template = 'sale/customer_group_form.tpl';]]></search>
+			<add><![CDATA[		$this->load->model('setting/extension');
+
+		$results = $this->model_setting_extension->getExtensions('payment');
+
+		$payment_methods = array();
+
+		foreach ($results as $result) {
+			$extension = basename($result['code'], '.php');
+			$this->load->language('payment/' . $extension);
+			$result['name'] = $this->language->get('heading_title');
+			$payment_methods[] = $result;
+		}
+
+		$this->data['payment_methods'] = $payment_methods;
+
+		if (isset($this->request->post['payment_methods'])) {
+			$this->data['selected_payment_methods'] = $this->request->post['payment_methods'];
+		} elseif (isset($customer_group_info['payment_methods']) && ($customer_group_info['payment_methods'] != '')) {
+			$this->data['selected_payment_methods'] = unserialize($customer_group_info['payment_methods']);
+		} else {
+			$this->data['selected_payment_methods'] = array();
+		}
+
+		$results = $this->model_setting_extension->getExtensions('shipping');
+
+		$shipping_methods = array();
+
+		foreach ($results as $result) {
+			$extension = basename($result['code'], '.php');
+			$this->load->language('shipping/' . $extension);
+			$result['name'] = $this->language->get('heading_title');
+			$shipping_methods[] = $result;
+		}
+
+		$this->data['shipping_methods'] = $shipping_methods;
+
+		if (isset($this->request->post['shipping_methods'])) {
+			$this->data['selected_shipping_methods'] = $this->request->post['shipping_methods'];
+		} elseif (isset($customer_group_info['shipping_methods']) && ($customer_group_info['shipping_methods'] != '')) {
+			$this->data['selected_shipping_methods'] = unserialize($customer_group_info['shipping_methods']);
+		} else {
+			$this->data['selected_shipping_methods'] = array();
+		}
+		]]></add>
+		</operation>
+	</file>
+
+	<file name="admin/language/english/sale/customer_group.php">
+		<operation>
+			<search position="after" ><![CDATA[$_['entry_name']                = 'Customer Group Name:';]]></search>
+			<add><![CDATA[
+$_['entry_payment_methods'] = 'Payment Methods:';
+$_['entry_shipping_methods'] = 'Shipping Methods:';]]></add>
+		</operation>
+	</file>
+
+	<file name="admin/model/sale/customer_group.php">
+		<operation error="skip">
+			<search position="after"><![CDATA[$customer_group_id = $this->db->getLastId();]]></search>
+			<add><![CDATA[
+		$installed_query = $this->db->query("SHOW COLUMNS FROM " . DB_PREFIX . "customer_group LIKE 'payment_methods'");
+
+		$installed = $installed_query->num_rows ? true : false;
+
+		if (!$installed) {
+			$this->db->query("ALTER TABLE " . DB_PREFIX . "customer_group ADD `payment_methods` LONGTEXT NULL AFTER `approval` , ADD `shipping_methods` LONGTEXT NULL AFTER `payment_methods` ");
+		}
+
+		$this->db->query("UPDATE " . DB_PREFIX . "customer_group SET payment_methods = '" . (isset($data['payment_methods']) ? serialize($data['payment_methods']) : '') . "', shipping_methods = '" . (isset($data['shipping_methods']) ? serialize($data['shipping_methods']) : '') . "' WHERE customer_group_id = '" . (int)$customer_group_id . "'");]]></add>
+		</operation>
+		<operation error="skip">
+			<search position="after"><![CDATA[$this->db->query("UPDATE " . DB_PREFIX . "customer_group SET approval = '" . (int)$data['approval'] . "', company_id_display = '" . (int)$data['company_id_display'] . "', company_id_required = '" . (int)$data['company_id_required'] . "', tax_id_display = '" . (int)$data['tax_id_display'] . "', tax_id_required = '" . (int)$data['tax_id_required'] . "', sort_order = '" . (int)$data['sort_order'] . "' WHERE customer_group_id = '" . (int)$customer_group_id . "'");]]></search>
+			<add><![CDATA[		$installed_query = $this->db->query("SHOW COLUMNS FROM " . DB_PREFIX . "customer_group LIKE 'payment_methods'");
+
+		$installed = $installed_query->num_rows ? true : false;
+
+		if (!$installed) {
+			$this->db->query("ALTER TABLE " . DB_PREFIX . "customer_group ADD `payment_methods` LONGTEXT NULL AFTER `approval` , ADD `shipping_methods` LONGTEXT NULL AFTER `payment_methods` ");
+		}
+
+		$this->db->query("UPDATE " . DB_PREFIX . "customer_group SET payment_methods = '" . (isset($data['payment_methods']) ? serialize($data['payment_methods']) : '') . "', shipping_methods = '" . (isset($data['shipping_methods']) ? serialize($data['shipping_methods']) : '') . "' WHERE customer_group_id = '" . (int)$customer_group_id . "'");]]></add>
+		</operation>
+	</file>
+
+	<file name="admin/model/setting/extension.php">
+		<operation>
+			<search position="bottom" offset="2"></search>
+			<add><![CDATA[
+	function getExtensions($type) {
+        $query = $this->db->query("SELECT * FROM " . DB_PREFIX . "extension WHERE `type` = '" . $this->db->escape($type) . "'");
+		return $query->rows;
+	}]]></add>
+		</operation>
+	</file>
+
+	<file name="admin/view/template/sale/customer_group_form.tpl">
+		<operation>
+			<search position="before"><![CDATA[</table>]]></search>
+			<add><![CDATA[          <tr>
+            <td><span class="required">*</span> <?php echo $entry_payment_methods; ?></td>
+            <td><div class="scrollbox" style="height:auto;">
+                  <?php $class = 'even'; ?>
+                  <?php foreach ($payment_methods as $payment_method) { ?>
+                  <?php $class = ($class == 'even' ? 'odd' : 'even'); ?>
+                  <div class="<?php echo $class; ?>">
+                    <?php if (in_array($payment_method['extension_id'],$selected_payment_methods)) { ?>
+                    <input type="checkbox" name="payment_methods[]" value="<?php echo $payment_method['extension_id']; ?>" checked="checked" />
+                    <?php echo $payment_method['name']; ?>
+                    <?php } else { ?>
+                    <input type="checkbox" name="payment_methods[]" value="<?php echo $payment_method['extension_id']; ?>" />
+                    <?php echo $payment_method['name']; ?>
+                    <?php } ?>
+                  </div>
+                  <?php } ?>
+                </div>
+                <a onclick="$(this).parent().find(':checkbox').attr('checked', true);"><?php echo $text_select_all; ?></a> / <a onclick="$(this).parent().find(':checkbox').attr('checked', false);"><?php echo $text_unselect_all; ?></a></td>
+          </tr>
+          <tr>
+            <td><span class="required">*</span> <?php echo $entry_shipping_methods; ?></td>
+            <td><div class="scrollbox" style="height:auto;">
+                  <?php $class = 'even'; ?>
+                  <?php foreach ($shipping_methods as $shipping_method) { ?>
+                  <?php $class = ($class == 'even' ? 'odd' : 'even'); ?>
+                  <div class="<?php echo $class; ?>">
+                    <?php if (in_array($shipping_method['extension_id'],$selected_shipping_methods)) { ?>
+                    <input type="checkbox" name="shipping_methods[]" value="<?php echo $shipping_method['extension_id']; ?>" checked="checked" />
+                    <?php echo $shipping_method['name']; ?>
+                    <?php } else { ?>
+                    <input type="checkbox" name="shipping_methods[]" value="<?php echo $shipping_method['extension_id']; ?>" />
+                    <?php echo $shipping_method['name']; ?>
+                    <?php } ?>
+                  </div>
+                  <?php } ?>
+                </div>
+                <a onclick="$(this).parent().find(':checkbox').attr('checked', true);"><?php echo $text_select_all; ?></a> / <a onclick="$(this).parent().find(':checkbox').attr('checked', false);"><?php echo $text_unselect_all; ?></a></td>
+          </tr>]]></add>
+		</operation>
+	</file>
+</modification>

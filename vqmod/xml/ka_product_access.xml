@@ -1,0 +1,737 @@
+<modification>
+	<id>Restricted Product Access ver.2 - OpenCart 1.5.2.x - 1.5.6.x core file modifications</id>
+	<version>2.2.10</version>
+	<vqmver>2.1.5</vqmver>
+	<author>karapuz (support@ka-station.com)</author>
+	<file name="admin/controller/catalog/category.php">
+		<operation>
+			<search position="after" index="1"><![CDATA[$this->data['stores'] = $this->model_setting_store->getStores()]]></search>
+			<add><![CDATA[		//karapuz
+		$this->load->model('sale/customer_group');
+		$this->data['customer_groups'] = $this->model_sale_customer_group->getCustomerGroups();
+		$this->load->model('catalog/ka_product_access');
+		$this->data['is_product_access_installed'] = $this->model_catalog_ka_product_access->isInstalled();
+		if (!empty($this->request->get['category_id'])) {
+			$this->data['category_customer_group_ids'] = $this->model_catalog_category->getCategoryCustomerGroups($this->request->get['category_id']);
+		} else {
+			$this->data['category_customer_group_ids'] = array();
+		}
+		$this->data['text_select_all'] = $this->language->get('text_select_all');
+		$this->data['text_unselect_all'] = $this->language->get('text_unselect_all');
+		if (!empty($category_info) && $category_info['propagate_restrictions'] == 'Y') {
+			$this->data['propagate_restrictions'] = true;
+		}
+		///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="admin/controller/catalog/product.php">
+		<operation>
+			<search position="after" index="1"><![CDATA[$this->data['customer_groups'] = $this->model_sale_customer_grou]]></search>
+			<add><![CDATA[		//karapuz
+		$this->load->model('catalog/ka_product_access');
+		$this->data['is_product_access_installed'] = $this->model_catalog_ka_product_access->isInstalled();
+		if (!empty($this->request->get['product_id'])) {
+			$this->data['product_customer_group_ids'] = $this->model_catalog_product->getProductCustomerGroups($this->request->get['product_id']);
+		} else {
+			$this->data['product_customer_group_ids'] = array();
+		}
+		///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="admin/model/catalog/category.php">
+		<operation>
+			<search position="after" index="1"><![CDATA[$category_id = $this->db->getLastId();]]></search>
+			<add><![CDATA[		//karapuz
+		if (isset($data['category_customer_group_ids'])) {
+			foreach ($data['category_customer_group_ids'] as $group_id) {
+				$this->db->query("INSERT INTO " . DB_PREFIX . "category_customer_group SET category_id = '" . (int)$category_id . "', customer_group_id = '" . (int)$group_id . "'");
+			}
+		}
+		$data['propagate_restrictions'] = (isset($data['propagate_restrictions'])) ? 'Y' : 'N';
+		if ($this->config->get('ka_pa_no_propagation') == 'Y') {
+			$data['propagate_restrictions'] = 'N';
+		}
+		$this->db->query("UPDATE " . DB_PREFIX . "category SET propagate_restrictions='$data[propagate_restrictions]'");
+		///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="after" index="1"><![CDATA[$this->db->query("UPDATE " . DB_PREFIX . "category SET parent_id = '" . (int]]></search>
+			<add><![CDATA[		//karapuz
+		$this->db->query("DELETE FROM " . DB_PREFIX . "category_customer_group WHERE category_id = '" . (int)$category_id . "'");
+		if (isset($data['category_customer_group_ids'])) {
+			foreach ($data['category_customer_group_ids'] as $group_id) {
+				$this->db->query("INSERT INTO " . DB_PREFIX . "category_customer_group SET category_id = '" . (int)$category_id . "', customer_group_id = '" . (int)$group_id . "'");
+			}
+		} else {
+			$data['category_customer_group_ids'] = array();
+		}
+		$data['propagate_restrictions'] = (isset($data['propagate_restrictions'])) ? 'Y' : 'N';		
+		$this->propagateRestrictions($category_id, $data['category_customer_group_ids'], $data['propagate_restrictions'] == 'Y');
+		if ($this->config->get('ka_pa_no_propagation') == 'Y') {
+			$data['propagate_restrictions'] = 'N';
+		}
+		$this->db->query("UPDATE " . DB_PREFIX . "category SET propagate_restrictions='$data[propagate_restrictions]'");
+		///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="after" index="1"><![CDATA[public function deleteCategory($category_id)]]></search>
+			<add><![CDATA[		//karapuz
+		$this->db->query("DELETE FROM " . DB_PREFIX . "category_customer_group WHERE category_id = '" . (int)$category_id . "'");
+		///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="before" index="1"><![CDATA[public function getCategoryStores($category_id)]]></search>
+			<add><![CDATA[	//karapuz
+	public function propagateRestrictions($category_id, $groups, $propagate) {
+
+		// set restrictions for child categories
+		if ($propagate) {
+			$qry = $this->db->query("SELECT category_id FROM " . DB_PREFIX . "category WHERE parent_id = '" . (int)$category_id . "'");
+			if ($qry->num_rows > 0) {
+				foreach ($qry->rows as $category) {
+					$this->propagateRestrictions($category['category_id'], $groups, $propagate);
+				}
+			}
+			
+
+			// set restrictions for the current category
+			$this->db->query("DELETE FROM " . DB_PREFIX . "category_customer_group WHERE category_id = '" . (int)$category_id . "'");
+			if (isset($groups)) {
+				foreach ($groups as $group_id) {
+					$this->db->query("INSERT INTO " . DB_PREFIX . "category_customer_group SET category_id = '" . (int)$category_id . "', customer_group_id = '" . (int)$group_id . "'");
+				}
+			}
+
+			// set restrictions for products
+			$qry = $this->db->query("SELECT product_id FROM " . DB_PREFIX . "product_to_category WHERE category_id = '" . (int)$category_id . "'");
+			if ($qry->num_rows > 0) {
+				foreach ($qry->rows as $product) {
+					$pid = $product['product_id'];
+					$this->db->query("DELETE FROM " . DB_PREFIX . "product_customer_group WHERE product_id = '" . (int)$pid . "'");
+					if (isset($groups)) {
+						foreach ($groups as $group_id) {
+							$this->db->query("INSERT INTO " . DB_PREFIX . "product_customer_group SET product_id = '" . (int)$pid . "', customer_group_id = '" . (int)$group_id . "'");
+						}
+					}
+				}
+			}		
+		}
+	}
+	
+
+	public function getCategoryCustomerGroups($category_id) {
+		$query = $this->db->query("SELECT customer_group_id FROM " . DB_PREFIX . "category_customer_group WHERE category_id = '" . (int)$category_id . "'");
+
+		$res = array();
+		if (!empty($query->rows)) {
+			foreach ($query->rows as $row) {
+				$res[] = $row['customer_group_id'];
+			}
+		}
+
+		return $res;
+	}
+	///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="admin/model/catalog/product.php">
+		<operation>
+			<search position="after" index="1"><![CDATA[$product_id = $this->db->getLastId();]]></search>
+			<add><![CDATA[		//karapuz
+		if (isset($data['product_customer_group_ids'])) {
+			foreach ($data['product_customer_group_ids'] as $group_id) {
+				$this->db->query("INSERT INTO " . DB_PREFIX . "product_customer_group SET product_id = '" . (int)$product_id . "', customer_group_id = '" . (int)$group_id . "'");
+			}
+		}
+		///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="after" index="1"><![CDATA[function editProduct(]]></search>
+			<add><![CDATA[		//karapuz
+		$this->db->query("DELETE FROM " . DB_PREFIX . "product_customer_group WHERE product_id = '" . (int)$product_id . "'");
+		if (isset($data['product_customer_group_ids'])) {
+			foreach ($data['product_customer_group_ids'] as $group_id) {
+				$this->db->query("INSERT INTO " . DB_PREFIX . "product_customer_group SET product_id = '" . (int)$product_id . "', customer_group_id = '" . (int)$group_id . "'");
+			}
+		}
+		///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="after" index="1"><![CDATA[$data = array_merge($data, array('product_discount' => $this->getProductDiscounts($pr]]></search>
+			<add><![CDATA[			//karapuz
+			$data = array_merge($data, array('product_customer_group_ids' => $this->getProductCustomerGroups($product_id)));
+			///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="after" index="1"><![CDATA[public function deleteProduct($product_id) {]]></search>
+			<add><![CDATA[		//karapuz
+		$this->db->query("DELETE FROM " . DB_PREFIX . "product_customer_group WHERE product_id = '" . (int)$product_id . "'");
+		///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="before" index="1"><![CDATA[public function getProductSpecials($product_id]]></search>
+			<add><![CDATA[  //karapuz
+	public function getProductCustomerGroups($product_id) {		
+		$query = $this->db->query("SELECT customer_group_id FROM " . DB_PREFIX . "product_customer_group WHERE product_id = '" . (int)$product_id . "'");
+
+		$res = array();
+		if (!empty($query->rows)) {
+			foreach ($query->rows as $row) {
+				$res[] = $row['customer_group_id'];
+			}
+		}
+
+		return $res;
+	}
+	///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="admin/view/template/catalog/category_form.tpl">
+		<operation>
+			<search position="before" index="1" offset="1"><![CDATA[<td><?php echo $entry_store; ?></td]]></search>
+			<add><![CDATA[            <?php /* //karapuz */?>            <?php if ($is_product_access_installed) { ?>
+            <tr>
+              <td>Available to Customer Groups:</td>
+              <td><div class="scrollbox">
+                  <?php $class = 'odd'; ?>
+                  <?php foreach ($customer_groups as $group) { ?>
+                  <?php $class = ($class == 'even' ? 'odd' : 'even'); ?>
+                  <div class="<?php echo $class; ?>">
+                    <?php if (empty($category_customer_group_ids) || in_array($group['customer_group_id'], $category_customer_group_ids)) { ?>
+                    <input type="checkbox" name="category_customer_group_ids[]" value="<?php echo $group['customer_group_id']; ?>" checked="checked" />
+                    <?php echo $group['name']; ?>
+                    <?php } else { ?>
+                    <input type="checkbox" name="category_customer_group_ids[]" value="<?php echo $group['customer_group_id']; ?>" />
+                    <?php echo $group['name']; ?>
+                    <?php } ?>
+                  </div>
+                  <?php } ?>
+                </div>
+                <a onclick="$(this).parent().find(':checkbox').attr('checked', true);"><?php echo $text_select_all; ?></a> / <a onclick="$(this).parent().find(':checkbox').attr('checked', false);"><?php echo $text_unselect_all; ?></a>
+                <br />
+                <input type="checkbox" id="propagate_restrictions" name="propagate_restrictions" <?php if (isset($propagate_restrictions)) { ?> checked="checked"<?php } ?>/><label for="propagate_restrictions">Propagate restrictions to sub-categories and products</label>
+              </td>
+            </tr>
+            <?php } ?>
+            <?php /* ///karapuz */ ?>]]></add>
+		</operation>
+	</file>
+	<file name="admin/view/template/catalog/product_form.tpl">
+		<operation>
+			<search position="before" index="1" offset="1"><![CDATA[<td><?php echo $entry_category; ?></td>]]></search>
+			<add><![CDATA[            <?php /* //karapuz */?>            <?php if ($is_product_access_installed) { ?>
+            <tr>
+              <td>Available to Customer Groups:</td>
+              <td><div class="scrollbox">                 
+                  <?php $class = 'odd'; ?>
+                  <?php foreach ($customer_groups as $group) { ?>
+                  <?php $class = ($class == 'even' ? 'odd' : 'even'); ?>
+                  <div class="<?php echo $class; ?>">                   
+                    <?php if (empty($product_customer_group_ids) || in_array($group['customer_group_id'], $product_customer_group_ids)) { ?>
+                    <input type="checkbox" name="product_customer_group_ids[]" value="<?php echo $group['customer_group_id']; ?>" checked="checked" />
+                    <?php echo $group['name']; ?>
+                    <?php } else { ?>
+                    <input type="checkbox" name="product_customer_group_ids[]" value="<?php echo $group['customer_group_id']; ?>" />
+                    <?php echo $group['name']; ?>
+                    <?php } ?>
+                  </div>
+                  <?php } ?>
+                </div>
+                <a onclick="$(this).parent().find(':checkbox').attr('checked', true);"><?php echo $this->language->get('Select All'); ?></a> / <a onclick="$(this).parent().find(':checkbox').attr('checked', false);"><?php echo $this->language->get('Unselect All'); ?></a></td>
+            </tr>            
+            <?php } ?>
+            <?php /* ///karapuz */ ?>]]></add>
+		</operation>
+	</file>
+	<file name="catalog/controller/account/order.php">
+		<operation>
+			<search position="after" index="1"><![CDATA[foreach ($order_products as $order_product) {]]></search>
+			<add><![CDATA[					//karapuz
+					$this->load->model('catalog/ka_product_access');
+					if ($this->model_catalog_ka_product_access->isInstalled()) {
+						if ($this->model_catalog_ka_product_access->isProductAccessDenied($order_product['product_id'])) {
+							$this->session->data['ka_error'] = $this->language->get('error_not_available');
+							$this->redirect($this->url->link('account/order/info', 'order_id=' . $this->request->get['order_id'] . $url, 'SSL'));
+							break;
+						}
+					}
+					///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="after" index="1"><![CDATA[public function info() {]]></search>
+			<add><![CDATA[		//karapuz
+		if (!empty($this->session->data['ka_error'])) {
+	  		$this->language->load('account/order');
+	  		$this->error['warning'] = $this->language->get('error_not_available');
+	  		$this->session->data['ka_error'] = null;
+		}
+	  	///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/controller/account/return.php">
+		<operation>
+			<search position="after" index="1"><![CDATA[model_catalog_product->getProduct(]]></search>
+			<add><![CDATA[			//karapuz
+			if ($this->db->isKaInstalled('ka_product_access')) {
+				if (empty($product_info)) {
+					$qry = $this->db->query("SELECT * FROM " . DB_PREFIX . "order_product WHERE 
+						order_id = '" . (int)$order_info['order_id'] . "'
+						AND product_id = '" . (int)$this->request->get['product_id'] . "'
+					");
+					$product_info = $qry->row;
+				}
+			}
+			///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/controller/account/wishlist.php">
+		<operation>
+			<search position="before" index="1"><![CDATA[$this->data['products'][] = array(]]></search>
+			<add><![CDATA[				//karapuz
+				if ($this->db->isKaInstalled('ka_product_access')) {
+					$price = 'n/a';
+				}
+				///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/controller/checkout/cart.php">
+		<operation>
+			<search position="after" index="1"><![CDATA[model_catalog_product->getProduct]]></search>
+			<add><![CDATA[		//karapuz
+		if ($this->db->isKaInstalled('ka_product_access')) {
+			if ($this->cart->isProductAccessDenied($product_id)) {
+				if ($this->config->get('ka_pa_visibility') == '') {
+					$product_info = false;
+				} else {
+					$json['redirect'] = str_replace('&amp;', '&', $this->url->link('product/product', 'product_id=' . $this->request->post['product_id']));
+				}
+			}
+		}
+		///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/controller/common/header.php">
+		<operation>
+			<search position="before" index="1"><![CDATA[$this->data['text_wishlist'] = sprintf($this->language->get('text_wishlist'), (isset]]></search>
+			<add><![CDATA[		//karapuz
+		$this->load->model('catalog/ka_product_access');
+		if ($this->model_catalog_ka_product_access->isInstalled()) {
+			if (!empty($this->session->data['wishlist'])) {
+				$_wishlist = array();
+				foreach($this->session->data['wishlist'] as $product_id) {
+					if ($this->model_catalog_ka_product_access->IsProductAccessDenied($product_id)) {
+						if ($this->config->get('ka_pa_visibility') == '') {
+							continue;
+						}
+					}
+					$_wishlist[] = $product_id;
+				}
+				$this->session->data['wishlist'] = $_wishlist;
+			}
+		}
+		///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/controller/module/featured.php">
+		<operation>
+			<search position="before" index="1"><![CDATA[$this->data['products'][] = array(]]></search>
+			<add><![CDATA[				//karapuz
+				if ($this->db->isKaInstalled('ka_product_access')) {
+					if (empty($product_info['price'])) {
+						$price = 0;
+					}
+				}
+				///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/controller/module/special.php">
+		<operation>
+			<search position="before" index="1"><![CDATA[$this->data['products'][] = array(]]></search>
+			<add><![CDATA[			//karapuz
+			if ($this->db->isKaInstalled('ka_product_access')) {
+				if (empty($product_info['price'])) {
+					$price = 0;
+				}
+			}
+			///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/controller/product/category.php">
+		<operation>
+			<search position="before" index="1"><![CDATA[$this->data['products'][] = array(]]></search>
+			<add><![CDATA[			    //karapuz
+			    if ($this->db->isKaInstalled('ka_product_access')) {
+			    	if (!isset($this->model_catalog_ka_product_access)) {
+				    	$this->load->model('catalog/ka_product_access');
+				    }
+				    if ($this->model_catalog_ka_product_access->isProductAccessDenied($result['product_id'])) {
+						$visibility = $this->config->get('ka_pa_visibility');
+						if (!empty($visibility)) {
+							$this->data['hide_cart_button'][$result['product_id']] = true;
+							if ($visibility == 'no_prices') {
+								$price   = 0;
+								$special = 0;
+								$tax     = 0;
+							}
+						}
+					}
+			    }
+			    ///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="after" index="1" offset="1"><![CDATA[$this->template = 'default/template/error/not_found.tpl';]]></search>
+			<add><![CDATA[			//karapuz
+			$this->load->model('catalog/ka_product_access');
+			if ($this->model_catalog_ka_product_access->isInstalled()) {
+				$this->language->load('product/ka_product_access');
+
+				if ($this->model_catalog_ka_product_access->IsCategoryAccessDenied($category_id)) {					
+					if (!$this->customer->isLogged() && $this->config->get('ka_pa_show_login_page') == 'Y') {
+						$this->session->data['redirect'] = $this->url->link('product/category', "path=$category_id", 'SSL');
+						$this->redirect($this->url->link('account/login', '', 'SSL'));
+					}
+				
+					$this->document->setTitle($this->language->get('Access Denied'));
+					$this->data['heading_title'] = $this->language->get('Access Denied');
+
+					$this->data['text_error'] = $this->language->get('text_access_denied');
+					if (file_exists(DIR_TEMPLATE . $this->config->get('config_template') . '/template/error/category_access_denied.tpl')) {
+						$this->template = $this->config->get('config_template') . '/template/error/category_access_denied.tpl';
+					} else {
+						$this->template = 'default/template/error/category_access_denied.tpl';
+					}
+				}
+			}
+			///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/controller/product/product.php">
+		<operation>
+			<search position="after" index="1"><![CDATA[model_catalog_product->updateViewed(]]></search>
+			<add><![CDATA[			//karapuz
+			if ($this->db->isKaInstalled('ka_product_access')) {
+				$this->language->load('product/ka_product_access');
+				$this->load->model('catalog/ka_product_access');
+				
+				$purchase_url = $this->model_catalog_ka_product_access->getPurchaseUrl($this->request->get['product_id']);
+				if (empty($purchase_url)) {
+					$this->data['text_no_access_button'] = $this->language->get('text_access_denied');
+				} else {
+					$this->data['text_no_access_button'] = str_replace(array('{page}'), array($purchase_url), $this->language->get('text_no_access_button'));
+				}
+				
+				if ($this->model_catalog_ka_product_access->isProductAccessDenied($this->request->get['product_id'])) {
+				
+					$visibility = $this->config->get('ka_pa_visibility');
+					
+					if (!empty($visibility)) {
+						$this->data['hide_cart_button'] = true;
+						if ($visibility == 'no_prices') {
+							$this->data['hide_prices'] = true;
+							$this->data['price']       = false;
+							$this->data['options']     = false;
+							$this->data['discount']    = false;
+						}
+					}
+				}
+			}
+			///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="after" index="1" offset="1"><![CDATA[$this->template = 'default/template/error/not_found.tpl';]]></search>
+			<add><![CDATA[			//karapuz
+			$this->load->model('catalog/ka_product_access');
+			if ($this->model_catalog_ka_product_access->isInstalled()) {
+				$this->language->load('product/ka_product_access');
+
+				if ($this->model_catalog_ka_product_access->IsProductAccessDenied($product_id)) {
+				
+					if (!$this->customer->isLogged() && $this->config->get('ka_pa_show_login_page') == 'Y') {
+						$this->session->data['redirect'] = $this->url->link('product/product', "product_id=$product_id", 'SSL');
+						$this->redirect($this->url->link('account/login', '', 'SSL'));
+					}
+				
+					$this->document->setTitle($this->language->get('Access Denied'));
+					$this->data['heading_title'] = $this->language->get('Access Denied');
+					
+					$purchase_url = $this->model_catalog_ka_product_access->getPurchaseUrl($this->request->get['product_id']);
+					if (empty($purchase_url)) {
+						$this->data['text_error'] = $this->language->get('text_access_denied');
+					} else {
+						$this->data['text_error'] = str_replace(array('{page}'), array($purchase_url), $this->language->get('text_no_access_button'));
+					}
+					
+					$bk = array_pop($this->data['breadcrumbs']);
+					$bk['text'] = $this->language->get('Access Denied');
+					array_push($this->data['breadcrumbs'], $bk);
+					
+					if (file_exists(DIR_TEMPLATE . $this->config->get('config_template') . '/template/error/product_access_denied.tpl')) {
+						$this->template = $this->config->get('config_template') . '/template/error/product_access_denied.tpl';
+					} else {
+						$this->template = 'default/template/error/product_access_denied.tpl';
+					}
+				}
+			}
+			///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/controller/product/search.php">
+		<operation>
+			<search position="before" index="1"><![CDATA[$this->data['products'][] = array(]]></search>
+			<add><![CDATA[			    //karapuz
+			    if ($this->db->isKaInstalled('ka_product_access')) {
+			    	if (!isset($this->model_catalog_ka_product_access)) {
+				    	$this->load->model('catalog/ka_product_access');
+				    }
+				    if ($this->model_catalog_ka_product_access->isProductAccessDenied($result['product_id'])) {
+						$visibility = $this->config->get('ka_pa_visibility');
+						if (!empty($visibility)) {
+							$this->data['hide_cart_button'][$result['product_id']] = true;
+							if ($visibility == 'no_prices') {
+								$price   = 0;
+								$special = 0;
+								$tax     = 0;
+							}
+						}
+					}
+			    }
+			    ///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/language/english/account/order.php">
+		<operation>
+			<search position="before" index="1"><![CDATA[// Text]]></search>
+			<add><![CDATA[//karapuz
+$_['error_not_available']    = 'One of re-ordered products is not available.';
+///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/model/catalog/category.php">
+		<operation>
+			<search position="after" index="1"><![CDATA[$query = $this->db->query("SELECT DISTINCT * FROM " . DB_PREFIX . "category c LEFT JOIN]]></search>
+			<add><![CDATA[		//karapuz
+		if ($query->num_rows) {
+			$this->load->model('catalog/ka_product_access');
+			if ($this->model_catalog_ka_product_access->isInstalled()) {
+				if ($this->model_catalog_ka_product_access->IsCategoryAccessDenied($category_id)) {
+					return false;
+				}
+			}
+		}
+		///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="before" index="1"><![CDATA[$query = $this->db->query("SELECT * FROM " . DB_PREFIX . "category c LEFT JOIN " . DB_PREFIX . "category_description cd ON (c.category_id = cd.category_id) LEFT JOIN " . DB_PREFIX . "category_to_store c2s ON (c.category_id = c2s.category_id) WHERE c.parent_id = '" . (int)$parent_id . "' AND cd.language_id = '" . (int)$this->config->get('config_language_id') . "' AND c2s.store_id = '" . (int)$this->config->get('config_store_id') . "'  AND c.status = '1' ORDER BY c.sort_order, LCASE(cd.name)");]]></search>
+			<add><![CDATA[		//karapuz
+		$this->load->model('catalog/ka_product_access');
+		if ($this->model_catalog_ka_product_access->isInstalled()) {
+
+			if ($this->customer->isLogged()) {
+				$customer_group_id = $this->customer->getCustomerGroupId();
+			} else {
+				$customer_group_id = $this->config->get('config_customer_group_id');
+			}	
+
+			$query = $this->db->query($x="SELECT * FROM " . DB_PREFIX . "category c 
+					LEFT JOIN " . DB_PREFIX . "category_description cd ON (c.category_id = cd.category_id) 
+					LEFT JOIN " . DB_PREFIX . "category_customer_group ccg ON (c.category_id = ccg.category_id)
+					LEFT JOIN " . DB_PREFIX . "category_to_store c2s ON (c.category_id = c2s.category_id) 
+				WHERE c.parent_id = '" . (int)$parent_id . "' 
+					AND cd.language_id = '" . (int)$this->config->get('config_language_id') . "' 
+					AND (ccg.customer_group_id IS NULL OR ccg.customer_group_id = '" . $customer_group_id . "')
+					AND c2s.store_id = '" . (int)$this->config->get('config_store_id') . "'  
+					AND c.status = '1' ORDER BY c.sort_order, LCASE(cd.name)
+			");
+		} else
+		///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="before" index="1"><![CDATA[$query = $this->db->query("SELECT COUNT(*) AS total FROM " . DB_PREFIX . "category c LEFT JOIN " . DB_PREFIX . "category_to_store c2s ON (c.category_id = c2s.category_id) WHERE c.parent_id = '" . (int)$parent_id . "' AND c2s.store_id = '" . (int)$this->config->get('config_store_id') . "' AND c.status = '1'");]]></search>
+			<add><![CDATA[		//karapuz
+		$this->load->model('catalog/ka_product_access');
+		if ($this->model_catalog_ka_product_access->isInstalled()) {
+
+			if ($this->customer->isLogged()) {
+				$customer_group_id = $this->customer->getCustomerGroupId();
+			} else {
+				$customer_group_id = $this->config->get('config_customer_group_id');
+			}	
+
+			$query = $this->db->query("SELECT COUNT(*) AS total FROM " . DB_PREFIX . "category c 
+					LEFT JOIN " . DB_PREFIX . "category_to_store c2s ON (c.category_id = c2s.category_id) 
+					LEFT JOIN " . DB_PREFIX . "category_customer_group ON (c.category_id = ccg.category_id)
+				WHERE c.parent_id = '" . (int)$parent_id . "' 
+					AND c2s.store_id = '" . (int)$this->config->get('config_store_id') . "' 
+					AND (ccg.customer_group_id IS NULL OR ccg.customer_group_id = '" . $customer_group_id . "')
+					AND c.status = '1'");
+		} else
+		///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/model/catalog/product.php">
+		<operation>
+			<search position="after" index="1"><![CDATA[$query = $this->db->query("SELECT DISTINCT *, pd.name AS name, p.image, m.name]]></search>
+			<add><![CDATA[		//karapuz
+		if (!empty($query->row)) {
+			$this->load->model('catalog/ka_product_access');
+			if ($this->model_catalog_ka_product_access->isInstalled()) {
+				if ($this->model_catalog_ka_product_access->isProductAccessDenied($product_id)) {
+
+					$visibility = $this->config->get('ka_pa_visibility');
+					if ($visibility == '') {
+						return false;
+					} elseif ($visibility == 'no_prices') {
+						$query->row['price']    = 0;
+						$query->row['discount'] = 0;
+						$query->row['special' ] = 0;
+						$query->row['tax_class_id'] = 0;
+					}
+				}
+			}
+		}
+		///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="before" index="1"><![CDATA[WHERE pd.language_id = '" . (int)$this->config->get]]></search>
+			<add><![CDATA[			//karapuz
+			$this->load->model('catalog/ka_product_access');
+			if ($this->model_catalog_ka_product_access->isInstalled()) {
+				$sql .= " LEFT JOIN " . DB_PREFIX . "product_customer_group pcg ON (p.product_id = pcg.product_id)";
+			}
+			///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="before" index="1"><![CDATA[if (!empty($data['filter_name']) || !empty($data['filter_tag']]]></search>
+			<add><![CDATA[			//karapuz
+			if ($this->model_catalog_ka_product_access->isInstalled()) {
+				if ($this->config->get('ka_pa_visibility') == '') {
+					$sql .= " AND (pcg.customer_group_id IS NULL OR pcg.customer_group_id = '" . $customer_group_id . "')";
+				}
+			}
+			///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="before" index="1"><![CDATA[$this->getProduct($result['related_id']);]]></search>
+			<add><![CDATA[			//karapuz
+			if ($this->db->isKaInstalled('ka_product_access')) {
+				if ($this->model_catalog_ka_product_access->isProductAccessDenied($result['related_id'])) {
+					continue;
+				}
+			}
+			///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="before" index="2"><![CDATA[WHERE pd.language_id = '" . (int)$this->config->get('config_language_id') . "' AND]]></search>
+			<add><![CDATA[		//karapuz
+		$this->load->model('catalog/ka_product_access');
+		if ($this->model_catalog_ka_product_access->isInstalled()) {
+			if ($this->customer->isLogged()) {
+				$customer_group_id = $this->customer->getCustomerGroupId();
+			} else {
+				$customer_group_id = $this->config->get('config_customer_group_id');
+			}	
+			$sql .= " LEFT JOIN " . DB_PREFIX . "product_customer_group pcg ON (p.product_id = pcg.product_id)";
+		}
+		///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="before" index="2"><![CDATA[if (!empty($data['filter_name']) || !empty($data['filter_tag']))]]></search>
+			<add><![CDATA[		//karapuz
+		if ($this->model_catalog_ka_product_access->isInstalled()) {
+			if ($this->config->get('ka_pa_visibility') == '') {
+				$sql .= " AND (pcg.customer_group_id IS NULL OR pcg.customer_group_id = '" . $customer_group_id . "')";
+			}
+		}
+		///karapuz]]></add>
+		</operation>
+	</file>
+	<file name="catalog/view/theme/default/template/product/category.tpl">
+		<operation>
+			<search position="before" index="1"><![CDATA[echo $button_cart;]]></search>
+			<add><![CDATA[        <?php /* //karapuz */?>        <?php if (empty($hide_cart_button[$product['product_id']])) { ?>
+        <?php /* ///karapuz */?>]]></add>
+		</operation>
+		<operation>
+			<search position="after" index="1"><![CDATA[echo $button_cart;]]></search>
+			<add><![CDATA[        <?php /* //karapuz */?>        <?php } else { ?>
+        <input type="button" value="<?php echo $this->language->get('See Details'); ?>" onclick="addToCart('<?php echo $product['product_id']; ?>');" class="button" />
+        <?php } ?>
+        <?php /* ///karapuz */?>]]></add>
+		</operation>
+	</file>
+	<file name="catalog/view/theme/default/template/product/product.tpl">
+		<operation>
+			<search position="before" index="1"><![CDATA[class="cart"]]></search>
+			<add><![CDATA[      <?php /* //karapuz */?>      <?php if (empty($hide_cart_button)) { ?>
+      <?php /* ///karapuz */?>]]></add>
+		</operation>
+		<operation>
+			<search position="before" index="1"><![CDATA[if ($review_status)]]></search>
+			<add><![CDATA[      <?php /* //karapuz */?>      <?php } else { ?>
+        <?php echo $text_no_access_button; ?>
+      <?php } ?>
+      <?php /* ///karapuz */?>]]></add>
+		</operation>
+	</file>
+	<file name="catalog/view/theme/default/template/product/search.tpl">
+		<operation>
+			<search position="before" index="1"><![CDATA[class="cart"]]></search>
+			<add><![CDATA[      <?php /* //karapuz */?>      <?php if (empty($hide_cart_button[$product['product_id']])) { ?>
+      <?php /* ///karapuz */?>]]></add>
+		</operation>
+		<operation>
+			<search position="after" index="1"><![CDATA[class="cart"]]></search>
+			<add><![CDATA[      <?php /* //karapuz */?>      <?php } else { ?>
+      <div class="cart"><input type="button" value="<?php echo $this->language->get('See Details'); ?>" onclick="addToCart('<?php echo $product['product_id']; ?>');" class="button" /></div>
+      <?php } ?>
+      <?php /* ///karapuz */?>]]></add>
+		</operation>
+	</file>
+	<file name="system/library/cart.php">
+		<operation>
+			<search position="after" index="1"><![CDATA[$product_id = $product[0];]]></search>
+			<add><![CDATA[				//karapuz
+				if ($this->db->isKaInstalled('ka_product_access')) {
+					if ($this->isProductAccessDenied($product_id)) {
+						continue;
+					}
+				}
+			    ///karapuz]]></add>
+		</operation>
+		<operation>
+			<search position="before" index="1"><![CDATA[public function hasDownload() {]]></search>
+			<add><![CDATA[//karapuz
+	public function isProductAccessDenied($product_id) {
+
+		$query = $this->db->query("SELECT product_id FROM " . DB_PREFIX . "product WHERE product_id = '" . (int)$product_id . "'");
+		if (empty($query->row)) {
+			return false;
+		}
+
+		if ($this->customer->isLogged()) {
+			$customer_group_id = $this->customer->getCustomerGroupId();
+		} else {
+			$customer_group_id = $this->config->get('config_customer_group_id');
+		}
+
+		$query = $this->db->query("SELECT customer_group_id FROM " . DB_PREFIX . "product_customer_group pcg
+			WHERE product_id = '" . (int)$product_id . "'");
+
+		// no records in the product customer group table. Product is available to all users
+		//
+		if (empty($query->row)) {
+			return false;
+		}
+
+		foreach ($query->rows as $row) {
+			if ($row['customer_group_id'] == $customer_group_id) {
+				return false;
+			}
+		}
+		
+		return true;
+	}
+///karapuz]]></add>
+		</operation>
+	</file>
+</modification>

